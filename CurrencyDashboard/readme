@@ -1,0 +1,66 @@
+# 🌐 CurrencyDashboard (OpenAI Enhanced)
+
+미국 금리/환율 시뮬레이션에 **OpenAI 기반 투자 브리핑**을 결합한 인터랙티브 대시보드입니다.
+
+## ✅ 이번 업데이트 핵심
+
+- 기존 시뮬레이션(금리 ↔ 환율 ↔ 자산)을 유지
+- `OpenAI API` 연동 백엔드(`server.mjs`) 추가
+- 프론트엔드에서 현재 시뮬레이션 값을 전달해 **맞춤형 한국어 분석** 생성
+
+## 🚀 빠른 실행
+
+```bash
+npm install
+cp .env.example .env
+# .env에 OPENAI_API_KEY 입력
+npm run dev
+```
+
+- 프론트엔드: Vite (`http://localhost:5173`)
+- API 백엔드: Node HTTP 서버 (`http://localhost:8787`)
+
+## 🔐 환경 변수
+
+`.env` 파일 생성 후 아래 값 설정:
+
+```bash
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4.1-mini
+OPENAI_BACKEND_PORT=8787
+```
+
+## 🧠 OpenAI 분석 API
+
+- `POST /api/analysis`
+- Body 예시:
+
+```json
+{
+  "fedRate": 4.5,
+  "exchangeRate": 1560,
+  "stockKrw": 140.2,
+  "goldKrw": 181.7,
+  "bond": 87.5
+}
+```
+
+응답:
+
+```json
+{
+  "analysis": "...한국어 투자 브리핑..."
+}
+```
+
+## 📦 기술 스택
+
+- React + Vite
+- Recharts
+- Node.js built-in HTTP 서버
+- OpenAI Responses REST API
+
+## ⚠️ 참고
+
+- 이 앱은 교육용/실험용입니다.
+- AI 분석은 투자 조언이 아니며, 실제 투자 판단 책임은 사용자에게 있습니다.

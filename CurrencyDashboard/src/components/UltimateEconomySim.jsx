@@ -1,0 +1,175 @@
+import React, { useState, useEffect } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+
+const UltimateEconomySim = () => {
+    const [fedRate, setFedRate] = useState(2.5);
+    const [data, setData] = useState([]);
+    const [aiAnalysis, setAiAnalysis] = useState('');
+    const [analysisError, setAnalysisError] = useState('');
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [cacheStatus, setCacheStatus] = useState(null);
+    const [clientId] = useState(`client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
+
+    useEffect(() => {
+        const generatePoints = () => {
+            const points = [];
+            for (let i = 0; i <= 10; i++) {
+                const exchangeRate = 1100 + (fedRate * 80) + (i * 10);
+                const stockUsd = 100 + (i * 8) - (fedRate * 2);
+                const goldUsd = 100 + (i * 15) + (fedRate < 3 ? 20 : -5);
+                const stockKrw = (stockUsd * (exchangeRate / 1200)).toFixed(1);
+                const goldKrw = (goldUsd * (exchangeRate / 1200)).toFixed(1);
+
+                points.push({
+                    name: `T+${i}`,
+                    exchangeRate: Number(exchangeRate.toFixed(0)),
+                    stockKrw: parseFloat(stockKrw),
+                    goldKrw: parseFloat(goldKrw),
+                    bond: Number((100 - (fedRate * 5) + i).toFixed(1))
+                });
+            }
+            setData(points);
+        };
+
+        generatePoints();
+    }, [fedRate]);
+
+    const latestPoint = data[data.length - 1];
+
+    const handleAiAnalysis = async () => {
+        if (!latestPoint || isAnalyzing) {
+            return;
+        }
+
+        setIsAnalyzing(true);
+        setAnalysisError('');
+        setCacheStatus(null);
+
+        try {
+            const response = await fetch('/api/analysis', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Client-Id': clientId
+                },
+                body: JSON.stringify({
+                    fedRate,
+                    exchangeRate: latestPoint.exchangeRate,
+                    stockKrw: latestPoint.stockKrw,
+                    goldKrw: latestPoint.goldKrw,
+                    bond: latestPoint.bond
+                })
+            });
+
+            const result = await response.json();
+            
+            if (response.status === 429) {
+                throw new Error('요청이 너무 많습니다. 잠시 후 다시 시도하세요.');
+            }
+
+            if (!response.ok) {
+                throw new Error(result.error || '분석 요청에 실패했습니다.');
+            }
+
+            setAiAnalysis(result.analysis);
+            setCacheStatus({
+                cached: result.cached || false,
+                timestamp: new Date().toLocaleTimeString('ko-KR')
+            });
+        } catch (error) {
+            setAnalysisError(error.message || 'OpenAI 분석을 불러오지 못했습니다.');
+            setCacheStatus(null);
+        } finally {
+            setIsAnalyzing(false);
+        }
+    };
+
+    return (
+        <div style={{ padding: '20px', backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '16px', fontFamily: 'sans-serif' }}>
+            <h2 style={{ color: '#38bdf8', marginBottom: '24px' }}>🇰🇷 한-미 금리/환율 자산 시뮬레이터 (AI Edition)</h2>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                <div style={{ background: '#1e293b', padding: '20px', borderRadius: '12px' }}>
+                    <p style={{ marginBottom: '10px', fontSize: '1.1rem' }}>🇺🇸 <strong>미국 연준 금리: {fedRate}%</strong></p>
+                    <input
+                        type="range" min="0" max="10" step="0.25"
+                        value={fedRate}
+                        onChange={(e) => setFedRate(parseFloat(e.target.value))}
+                        style={{ width: '100%', accentColor: '#38bdf8', cursor: 'pointer' }}
+                    />
+                    <p style={{ fontSize: '13px', color: '#94a3b8', marginTop: '10px' }}>
+                        * 금리 상승 → 달러 가치 상승 → <strong>원/달러 환율 상승</strong>
+                    </p>
+                </div>
+                <div style={{ background: '#0369a1', padding: '20px', borderRadius: '12px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                    <span style={{ fontSize: '14px', color: '#e0f2fe' }}>예상 환율 (USD/KRW)</span>
+                    <h1 style={{ margin: '5px 0', fontSize: '2rem', fontWeight: 'bold' }}>₩{latestPoint?.exchangeRate}</h1>
+                </div>
+            </div>
+
+            <div style={{ height: '400px', background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                        <XAxis dataKey="name" stroke="#64748b" tick={{ fill: '#64748b' }} />
+                        <YAxis stroke="#64748b" tick={{ fill: '#64748b' }} />
+                        <Tooltip contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }} />
+                        <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                        <Line type="monotone" dataKey="stockKrw" stroke="#2563eb" name="S&P 500 (원화 환산)" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 8 }} />
+                        <Line type="monotone" dataKey="goldKrw" stroke="#eab308" name="금 (원화 환산)" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 8 }} />
+                        <Line type="monotone" dataKey="bond" stroke="#f87171" name="미국 채권 (AGG)" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 8 }} />
+                    </LineChart>
+                </ResponsiveContainer>
+            </div>
+
+            <div style={{ marginTop: '20px', padding: '20px', background: '#1e293b', borderRadius: '12px', fontSize: '15px', lineHeight: '1.6' }}>
+                <strong style={{ display: 'block', marginBottom: '10px', color: '#38bdf8' }}>💡 한국 투자자를 위한 분석:</strong>
+                <ul style={{ paddingLeft: '20px', color: '#cbd5e1', margin: 0 }}>
+                    <li style={{ marginBottom: '8px' }}>미국 금리가 오르면 <strong>채권(AGG)</strong>은 하락 압력을 받을 가능성이 큽니다.</li>
+                    <li style={{ marginBottom: '8px' }}>반면 달러 강세 구간에서는 <strong>환차익</strong>이 원화 기준 성과를 보완할 수 있습니다.</li>
+                    <li>핵심은 자산군을 나눠 보유하며 정기적으로 <strong>리밸런싱</strong>하는 것입니다.</li>
+                </ul>
+            </div>
+
+            <div style={{ marginTop: '20px', padding: '20px', background: '#082f49', borderRadius: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                    <strong style={{ color: '#7dd3fc' }}>🤖 OpenAI 맞춤 브리핑</strong>
+                    <button
+                        type="button"
+                        onClick={handleAiAnalysis}
+                        disabled={isAnalyzing || !latestPoint}
+                        style={{
+                            border: 'none',
+                            background: isAnalyzing ? '#475569' : '#0ea5e9',
+                            color: '#f8fafc',
+                            padding: '10px 14px',
+                            borderRadius: '8px',
+                            fontWeight: 700,
+                            cursor: isAnalyzing ? 'not-allowed' : 'pointer'
+                        }}
+                    >
+                        {isAnalyzing ? '분석 생성 중...' : 'AI 분석 생성'}
+                    </button>
+                </div>
+
+                {cacheStatus && (
+                    <p style={{ marginTop: '10px', fontSize: '12px', color: cacheStatus.cached ? '#86efac' : '#fbbf24' }}>
+                        {cacheStatus.cached ? '✓ 캐시됨' : '⚡ 신규 생성'} · {cacheStatus.timestamp}
+                    </p>
+                )}
+
+                {analysisError && (
+                    <p style={{ marginTop: '12px', color: '#fca5a5' }}>⚠️ {analysisError}</p>
+                )}
+
+                {aiAnalysis && (
+                    <pre style={{ marginTop: '12px', background: '#0f172a', borderRadius: '8px', padding: '14px', color: '#cbd5e1', whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '14px' }}>
+                        {aiAnalysis}
+                    </pre>
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default UltimateEconomySim;
