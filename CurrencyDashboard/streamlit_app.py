@@ -341,7 +341,7 @@ with col1:
 with col2:
     st.markdown("📖 [Documentation](https://github.com/STak6334/CurrencyDashboard/blob/main/README.md)")
 with col3:
-    st.markdown("🚀 [Live Demo](https://STak6334.github.io/CurrencyDashboard)")
+    st.markdown("🚀 [Live Demo](http://localhost:5173/CurrencyDashboard)")
 
 st.markdown(f"""
 <div style='text-align: center; color: #64748b; margin-top: 20px;'>
