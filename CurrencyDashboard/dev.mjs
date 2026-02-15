@@ -7,7 +7,7 @@ const backend = spawn(process.execPath, ['server.mjs'], {
 
 const viteScript = resolve('node_modules', 'vite', 'bin', 'vite.js');
 
-const frontend = spawn(process.execPath, [viteScript], {
+const frontend = spawn(process.execPath, [viteScript, '--host', '0.0.0.0'], {
   stdio: 'inherit'
 });
 
