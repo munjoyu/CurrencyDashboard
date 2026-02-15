@@ -18,7 +18,7 @@ if (existsSync(envPath)) {
 }
 
 const port = Number(process.env.OPENAI_BACKEND_PORT || 8787);
-const APP_VERSION = '1.2.3-local';
+const APP_VERSION = '1.3.0-openai-product';
 const START_TIME = Date.now();
 
 // ==================== LOGGER ====================
@@ -286,6 +286,25 @@ function validateAnalysisInput(data) {
   return { valid: true };
 }
 
+function validateAdvancedInput(data) {
+  const basicValidation = validateAnalysisInput(data);
+  if (!basicValidation.valid) return basicValidation;
+
+  const allowedRiskProfiles = ['conservative', 'balanced', 'aggressive'];
+  const riskProfile = data.riskProfile || 'balanced';
+  const investmentHorizonMonths = Number(data.investmentHorizonMonths || 12);
+
+  if (!allowedRiskProfiles.includes(riskProfile)) {
+    return { valid: false, error: 'riskProfile은 conservative, balanced, aggressive 중 하나여야 합니다.' };
+  }
+
+  if (!Number.isFinite(investmentHorizonMonths) || investmentHorizonMonths < 1 || investmentHorizonMonths > 240) {
+    return { valid: false, error: 'investmentHorizonMonths는 1~240 사이의 숫자여야 합니다.' };
+  }
+
+  return { valid: true };
+}
+
 // ==================== TEST MODE MOCK DATA ====================
 function getMockAnalysis(fedRate, exchangeRate, stockKrw, goldKrw, bond) {
   const analyses = [
@@ -414,6 +433,117 @@ class OpenAIClient {
 
     return this.makeRequest(messages);
   }
+
+  async analyzeMarketAdvanced(input) {
+    const {
+      fedRate,
+      exchangeRate,
+      stockKrw,
+      goldKrw,
+      bond,
+      riskProfile = 'balanced',
+      investmentHorizonMonths = 12,
+      investorMemo = ''
+    } = input;
+
+    if (this.testMode) {
+      return {
+        marketSummary: '미국의 금리 영향으로 달러 강세가 유지되고 있으며, 원화 기준 해외자산 성과가 민감하게 변동할 가능성이 높습니다.',
+        investmentPlaybook: [
+          '미국주식/채권/금을 혼합해 변동성을 분산하세요.',
+          '환율 급등 구간에서는 달러 비중 리밸런싱 기준을 사전에 정하세요.',
+          '분할 매수·분할 매도로 진입 시점을 분산하세요.'
+        ],
+        riskAlerts: [
+          '인플레이션 재상승 시 금리 인하 기대가 지연될 수 있습니다.',
+          '지정학적 이벤트 발생 시 환율 변동성이 급격히 확대될 수 있습니다.'
+        ],
+        allocationSuggestion: {
+          usStocksPercent: riskProfile === 'aggressive' ? 65 : riskProfile === 'conservative' ? 35 : 50,
+          usBondsPercent: riskProfile === 'aggressive' ? 20 : riskProfile === 'conservative' ? 45 : 30,
+          goldPercent: 15,
+          usdCashPercent: 10
+        },
+        actionChecklist: [
+          '월 1회 포트폴리오 리밸런싱 점검',
+          'Fed FOMC 일정 전후 변동성 대비',
+          `${investmentHorizonMonths}개월 투자 목표와 손절 기준 재확인`
+        ]
+      };
+    }
+
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: this.model,
+        input: [
+          {
+            role: 'system',
+            content: [
+              {
+                type: 'input_text',
+                text: '당신은 한국 개인투자자를 돕는 시니어 매크로 전략가입니다. 반드시 한국어로, 현실적인 리스크를 강조하며 응답하세요.'
+              }
+            ]
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'input_text',
+                text: `시장 입력값\nFed 금리: ${fedRate}%\nUSD/KRW: ${exchangeRate}\nS&P500 KRW: ${stockKrw}\nGold KRW: ${goldKrw}\n미국채 지표: ${bond}\n리스크 성향: ${riskProfile}\n투자 기간: ${investmentHorizonMonths}개월\n투자자 메모: ${investorMemo || '없음'}`
+              }
+            ]
+          }
+        ],
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'market_briefing',
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                marketSummary: { type: 'string' },
+                investmentPlaybook: { type: 'array', items: { type: 'string' }, minItems: 3, maxItems: 4 },
+                riskAlerts: { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: 3 },
+                allocationSuggestion: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    usStocksPercent: { type: 'number' },
+                    usBondsPercent: { type: 'number' },
+                    goldPercent: { type: 'number' },
+                    usdCashPercent: { type: 'number' }
+                  },
+                  required: ['usStocksPercent', 'usBondsPercent', 'goldPercent', 'usdCashPercent']
+                },
+                actionChecklist: { type: 'array', items: { type: 'string' }, minItems: 3, maxItems: 5 }
+              },
+              required: ['marketSummary', 'investmentPlaybook', 'riskAlerts', 'allocationSuggestion', 'actionChecklist']
+            }
+          }
+        }
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`OpenAI API Error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
+    }
+
+    const result = await response.json();
+    const rawText = result.output_text;
+    if (!rawText) {
+      throw new Error('OpenAI 응답이 비어 있습니다.');
+    }
+
+    return JSON.parse(rawText);
+  }
 }
 
 // ==================== HTTP SERVER ====================
@@ -436,7 +566,11 @@ const parseBody = async (req) => {
   for await (const chunk of req) {
     body += chunk;
   }
-  return body ? JSON.parse(body) : {};
+  try {
+    return body ? JSON.parse(body) : {};
+  } catch {
+    return {};
+  }
 };
 
 const getClientId = (req) => {
@@ -616,6 +750,38 @@ const server = createServer(async (req, res) => {
         duration_ms: duration,
         ai_duration_ms: aiDuration,
         confidence_score: 0.85
+      }, requestId, false, duration);
+      metricsCollector.recordRequest(req.method, req.url, 200, duration);
+      return;
+    }
+
+    if (req.url === '/api/analysis/advanced' && req.method === 'POST') {
+      if (!rateLimiter.isAllowed(clientId)) {
+        const duration = Date.now() - startTime;
+        sendJson(res, 429, { error: '요청 수 제한을 초과했습니다. 잠시 후 다시 시도하세요.' }, requestId, false, duration);
+        metricsCollector.recordRequest(req.method, req.url, 429, duration);
+        return;
+      }
+
+      const requestData = await parseBody(req);
+      const validation = validateAdvancedInput(requestData);
+      if (!validation.valid) {
+        const duration = Date.now() - startTime;
+        sendJson(res, 400, { error: validation.error }, requestId, false, duration);
+        metricsCollector.recordRequest(req.method, req.url, 400, duration);
+        return;
+      }
+
+      const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+      const hasApiKey = process.env.OPENAI_API_KEY && !process.env.OPENAI_API_KEY.includes('YOUR_KEY');
+      const client = new OpenAIClient(process.env.OPENAI_API_KEY || 'test-mode', model, !hasApiKey);
+
+      const advancedResult = await client.analyzeMarketAdvanced(requestData);
+      const duration = Date.now() - startTime;
+      sendJson(res, 200, {
+        briefing: advancedResult,
+        model,
+        generated_at: new Date().toISOString()
       }, requestId, false, duration);
       metricsCollector.recordRequest(req.method, req.url, 200, duration);
       return;
