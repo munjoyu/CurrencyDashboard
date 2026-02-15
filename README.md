@@ -297,6 +297,16 @@ npm start
 Frontend will be available at `http://localhost:5173` (or configured port)
 Backend API at `http://localhost:8787`
 
+
+### Deploying to Vercel from this repository root
+
+This repository keeps the Vite app in the `CurrencyDashboard/` subdirectory, so Vercel must either:
+
+1. Use **Root Directory = `CurrencyDashboard`** in Project Settings, or
+2. Use the included root-level `vercel.json` (install/build/output configured for the subdirectory).
+
+If Vercel is pointed at the repository root without one of the options above, deployments can return `404: NOT_FOUND`.
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please:
