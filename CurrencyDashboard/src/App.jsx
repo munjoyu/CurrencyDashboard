@@ -84,7 +84,7 @@ function App() {
                             {/* Health Status Badge */}
                             <div className={`px-3 py-1.5 rounded-lg border text-sm font-medium flex items-center gap-1.5 ${getStatusColor(healthStatus)}`}>
                                 <span>{getStatusIcon(healthStatus)}</span>
-                                <span>{healthStatus === 'checking' ? '확인 중...' : `API ${healthStatus}`}</span>
+                                <span>{healthStatus === 'checking' ? '확인 중... ' : `API ${healthStatus}`}</span>
                             </div>
 
                             {/* Stats Button */}
